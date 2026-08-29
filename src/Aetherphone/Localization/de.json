@@ -486,6 +486,7 @@
   "message.draftPrefix": "Entwurf:",
   "message.presenceOnline": "online",
   "message.presenceLastSeen": "zuletzt online {0}",
+  "message.pasteImageReady": "Bild bereit, Enter zum Senden drücken",
   "findPeople.character": "Charakter",
   "findPeople.freeCompany": "Freie Gesellschaft",
   "findPeople.nameHint": "Name",

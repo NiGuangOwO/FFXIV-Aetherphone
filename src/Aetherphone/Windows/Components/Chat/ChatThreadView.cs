@@ -63,6 +63,7 @@ internal abstract class ChatThreadView<TMessage, TThread> : IDisposable, IChatTr
     private readonly Action<string, string, string?> sendText;
     private readonly Action<string, string, string> editText;
     private readonly Action<string, byte[], int> sendVoice;
+    private readonly Action<string, string> sendImage;
     private readonly Func<int> resolveVoiceInput;
     private string? pendingPrefill;
     private readonly Func<string, bool> canRevealBody;
@@ -117,6 +118,7 @@ internal abstract class ChatThreadView<TMessage, TThread> : IDisposable, IChatTr
         sendText = ComposerSendText;
         editText = ComposerEditText;
         sendVoice = ComposerSendVoice;
+        sendImage = ComposerSendImage;
         resolveVoiceInput = ResolveVoiceInput;
         canRevealBody = CanRevealBody;
     }
@@ -342,6 +344,7 @@ internal abstract class ChatThreadView<TMessage, TThread> : IDisposable, IChatTr
             OnSendText = sendText,
             OnEditText = editText,
             OnSendVoice = sendVoice,
+            OnSendImage = sendImage,
         });
         DrawMessageMenu(area);
     }
@@ -749,6 +752,24 @@ internal abstract class ChatThreadView<TMessage, TThread> : IDisposable, IChatTr
     {
         store.SendVoiceMessage(threadId, wavBytes, durationSecs, _ => { });
         transcript.RequestSnapToBottom();
+    }
+
+    private void ComposerSendImage(string threadId, string path)
+    {
+        store.SendImageMessage(threadId, path, string.Empty, _ => TryDeletePastedImage(path));
+        transcript.RequestSnapToBottom();
+    }
+
+    private static void TryDeletePastedImage(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception)
+        {
+            AepLog.Warning(exception, $"Could not delete pasted image temp file {path}");
+        }
     }
 
     private int ResolveVoiceInput() => AudioDevices.ResolveInput(configuration.CallInputDevice);

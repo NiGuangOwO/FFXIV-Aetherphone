@@ -486,6 +486,7 @@
   "message.draftPrefix": "下書き:",
   "message.presenceOnline": "オンライン",
   "message.presenceLastSeen": "最終オンライン {0}",
+  "message.pasteImageReady": "画像準備完了、Enter で送信",
   "findPeople.character": "キャラクター",
   "findPeople.freeCompany": "フリーカンパニー",
   "findPeople.nameHint": "名前",

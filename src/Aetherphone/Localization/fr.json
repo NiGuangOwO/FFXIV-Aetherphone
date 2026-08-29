@@ -486,6 +486,7 @@
   "message.draftPrefix": "Brouillon :",
   "message.presenceOnline": "en ligne",
   "message.presenceLastSeen": "vu {0}",
+  "message.pasteImageReady": "Image prête, appuyez sur Entrée pour envoyer",
   "findPeople.character": "Personnage",
   "findPeople.freeCompany": "Compagnie libre",
   "findPeople.nameHint": "Nom",

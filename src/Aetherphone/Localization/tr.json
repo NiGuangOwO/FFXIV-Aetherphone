@@ -486,6 +486,7 @@
   "message.draftPrefix": "Taslak:",
   "message.presenceOnline": "çevrimiçi",
   "message.presenceLastSeen": "son görülme {0}",
+  "message.pasteImageReady": "Görsel hazır, göndermek için Enter'a basın",
   "findPeople.character": "Karakter",
   "findPeople.freeCompany": "Free Company",
   "findPeople.nameHint": "İsim",

@@ -486,6 +486,7 @@
   "message.draftPrefix": "Draft:",
   "message.presenceOnline": "online",
   "message.presenceLastSeen": "last seen {0}",
+  "message.pasteImageReady": "Image ready, press Enter to send",
   "findPeople.character": "Character",
   "findPeople.freeCompany": "Free Company",
   "findPeople.nameHint": "Name",

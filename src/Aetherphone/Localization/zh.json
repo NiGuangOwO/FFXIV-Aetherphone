@@ -486,6 +486,7 @@
   "message.draftPrefix": "草稿:",
   "message.presenceOnline": "在线",
   "message.presenceLastSeen": "最后在线 {0}",
+  "message.pasteImageReady": "图片已就绪，按回车发送",
   "findPeople.character": "角色",
   "findPeople.freeCompany": "部队",
   "findPeople.nameHint": "名称",

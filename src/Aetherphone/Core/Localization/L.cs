@@ -653,6 +653,7 @@ internal static class L
         public static readonly LocString DraftPrefix = new("message.draftPrefix", "Draft:");
         public static readonly LocString PresenceOnline = new("message.presenceOnline", "online");
         public static readonly LocString PresenceLastSeen = new("message.presenceLastSeen", "last seen {0}");
+        public static readonly LocString PasteImageReady = new("message.pasteImageReady", "Image ready, press Enter to send");
     }
 
     internal static class FindPeople

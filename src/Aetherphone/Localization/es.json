@@ -486,6 +486,7 @@
   "message.draftPrefix": "Borrador:",
   "message.presenceOnline": "en línea",
   "message.presenceLastSeen": "últ. vez {0}",
+  "message.pasteImageReady": "Imagen lista, pulsa Enter para enviar",
   "findPeople.character": "Personaje",
   "findPeople.freeCompany": "Free Company",
   "findPeople.nameHint": "Nombre",

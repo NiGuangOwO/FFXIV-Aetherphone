@@ -486,6 +486,7 @@
   "message.draftPrefix": "Черновик:",
   "message.presenceOnline": "в сети",
   "message.presenceLastSeen": "был(а) в сети {0}",
+  "message.pasteImageReady": "Изображение готово, нажмите Enter для отправки",
   "findPeople.character": "Персонаж",
   "findPeople.freeCompany": "Свободная компания",
   "findPeople.nameHint": "Имя",

@@ -2,9 +2,11 @@ using Aetherphone.Core;
 using Aetherphone.Core.Localization;
 using Aetherphone.Core.Media;
 using Aetherphone.Core.Notifications;
+using Aetherphone.Core.Platform;
 using Aetherphone.Core.Theme;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Textures.TextureWraps;
 using Dalamud.Interface.Utility.Raii;
 
 namespace Aetherphone.Windows.Components;
@@ -28,12 +30,15 @@ internal struct ChatComposerModel
     public Action<string, string, string?> OnSendText;
     public Action<string, string, string> OnEditText;
     public Action<string, byte[], int> OnSendVoice;
+    public Action<string, string> OnSendImage;
 }
 
 internal sealed class ChatComposer : IDisposable
 {
     private const int TextKind = 0;
     private const float AccessoryBarHeight = 46f;
+    private const float PastedBarHeight = 84f;
+    private const int PasteMaxDimension = 2048;
     private static readonly Vector4 White = new(1f, 1f, 1f, 1f);
     private static readonly Vector4 FieldFill = new(1f, 1f, 1f, 0.10f);
     private static readonly Vector4 BarFill = new(1f, 1f, 1f, 0.05f);
@@ -48,6 +53,12 @@ internal sealed class ChatComposer : IDisposable
     private string replyBarPreview = string.Empty;
     private string? editTargetId;
     private string editBarPreview = string.Empty;
+    private volatile bool pasteReadDone;
+    private byte[]? pasteReadResult;
+    private bool pasteBusy;
+    private string? pastedImagePath;
+    private volatile IDalamudTextureWrap? pastedTexture;
+    private int pasteGeneration;
 
     public string Draft
     {
@@ -61,9 +72,11 @@ internal sealed class ChatComposer : IDisposable
 
     public bool Recording => recorder.Recording;
 
-    public float AccessoryHeight => replyTargetId is not null || editTargetId is not null
-        ? AccessoryBarHeight * UiScale.Current
-        : 0f;
+    private bool HasPastedImage => pastedImagePath is not null;
+
+    public float AccessoryHeight => UiScale.Current * ((replyTargetId is not null || editTargetId is not null
+        ? AccessoryBarHeight
+        : 0f) + (HasPastedImage ? PastedBarHeight : 0f));
 
     public void BeginReply(string messageId, string senderName, string preview)
     {
@@ -107,6 +120,7 @@ internal sealed class ChatComposer : IDisposable
         replyBarName = string.Empty;
         replyBarPreview = string.Empty;
         editTargetId = null;
+        DiscardPastedImage();
     }
 
     public void Clear()
@@ -122,23 +136,37 @@ internal sealed class ChatComposer : IDisposable
 
     public void Dispose()
     {
+        DiscardPastedImage();
         recorder.Dispose();
     }
 
     public void Draw(Rect composerRect, in ChatComposerModel model)
     {
+        PumpPendingPaste();
         var accessory = AccessoryHeight;
         if (accessory > 0f)
         {
-            var barRect = new Rect(new Vector2(composerRect.Min.X, composerRect.Min.Y - accessory),
-                new Vector2(composerRect.Max.X, composerRect.Min.Y));
-            if (editTargetId is not null)
+            var top = composerRect.Min.Y - accessory;
+            if (HasPastedImage)
             {
-                DrawEditBar(barRect, model);
+                var pastedHeight = PastedBarHeight * UiScale.Current;
+                DrawPastedBar(new Rect(new Vector2(composerRect.Min.X, top),
+                    new Vector2(composerRect.Max.X, top + pastedHeight)), model);
+                top += pastedHeight;
             }
-            else
+
+            if (replyTargetId is not null || editTargetId is not null)
             {
-                DrawReplyBar(barRect, model);
+                var barRect = new Rect(new Vector2(composerRect.Min.X, top),
+                    new Vector2(composerRect.Max.X, composerRect.Min.Y));
+                if (editTargetId is not null)
+                {
+                    DrawEditBar(barRect, model);
+                }
+                else
+                {
+                    DrawReplyBar(barRect, model);
+                }
             }
         }
 
@@ -285,11 +313,35 @@ internal sealed class ChatComposer : IDisposable
             }
         }
 
+        if (ImGui.IsItemActive() && !IsEditing && !pasteBusy && !HasPastedImage
+            && ImGui.IsKeyPressed(ImGuiKey.V)
+            && (ImGui.IsKeyDown(ImGuiKey.LeftCtrl) || ImGui.IsKeyDown(ImGuiKey.RightCtrl))
+            && ClipboardPaste.HasImage())
+        {
+            pasteBusy = true;
+            _ = Task.Run(() =>
+            {
+                byte[]? result = null;
+                try
+                {
+                    result = ClipboardPaste.ReadImagePng(PasteMaxDimension);
+                }
+                catch (Exception exception)
+                {
+                    AepLog.Warning(exception, "Clipboard image paste failed");
+                }
+
+                pasteReadResult = result;
+                pasteReadDone = true;
+            });
+        }
+
         var hasDraft = draft.Trim().Length > 0;
-        var canSend = hasDraft && !model.Sending;
+        var hasPasted = HasPastedImage;
+        var canSend = (hasDraft || hasPasted) && !model.Sending;
         var sendRect = new Rect(sendCenter - new Vector2(buttonRadius, buttonRadius),
             sendCenter + new Vector2(buttonRadius, buttonRadius));
-        if (hasDraft)
+        if (hasDraft || hasPasted)
         {
             drawList.AddCircleFilled(sendCenter, buttonRadius,
                 ImGui.GetColorU32(canSend ? ui.Accent : theme.SurfaceMuted), 24);
@@ -334,10 +386,19 @@ internal sealed class ChatComposer : IDisposable
             }
             else
             {
-                model.OnSendText(model.ConversationId, draft, replyTargetId);
-                UiFeedback.Play(UiSound.MessageSent);
-                draft = string.Empty;
-                ClearReply();
+                if (hasDraft)
+                {
+                    model.OnSendText(model.ConversationId, draft, replyTargetId);
+                    UiFeedback.Play(UiSound.MessageSent);
+                    draft = string.Empty;
+                    ClearReply();
+                }
+
+                if (pastedImagePath is { } pastePath)
+                {
+                    model.OnSendImage(model.ConversationId, pastePath);
+                    DetachPastedImage();
+                }
             }
 
             emojiOpen = false;
@@ -367,6 +428,141 @@ internal sealed class ChatComposer : IDisposable
         {
             draft += picked;
             Plugin.Fonts.NoticeText(draft);
+        }
+    }
+
+    private void PumpPendingPaste()
+    {
+        if (!pasteReadDone)
+        {
+            return;
+        }
+
+        pasteReadDone = false;
+        pasteBusy = false;
+        var bytes = pasteReadResult;
+        pasteReadResult = null;
+        if (bytes is null || bytes.Length == 0)
+        {
+            return;
+        }
+
+        AttachPastedImage(bytes);
+    }
+
+    private void AttachPastedImage(byte[] pngBytes)
+    {
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"aetherphone-paste-{Guid.NewGuid():N}.png");
+            File.WriteAllBytes(path, pngBytes);
+            pastedImagePath = path;
+        }
+        catch (Exception exception)
+        {
+            AepLog.Warning(exception, "Could not write pasted image temp file");
+            return;
+        }
+
+        var generation = ++pasteGeneration;
+        _ = ImageProcessor.DecodeToTextureAsync(Plugin.TextureProvider, pngBytes, "chatcomposer.paste",
+            ImageProcessor.MaxDecodePixels, PasteMaxDimension, CancellationToken.None).ContinueWith(task =>
+        {
+            if (!task.IsCompletedSuccessfully)
+            {
+                return;
+            }
+
+            var texture = task.Result;
+            if (generation != pasteGeneration)
+            {
+                texture.Dispose();
+                return;
+            }
+
+            pastedTexture = texture;
+        });
+    }
+
+    private void DiscardPastedImage()
+    {
+        pasteGeneration++;
+        pastedTexture?.Dispose();
+        pastedTexture = null;
+        if (pastedImagePath is { } path)
+        {
+            pastedImagePath = null;
+            TryDeleteFile(path);
+        }
+    }
+
+    // Hands the temp file to the store; the send completion callback deletes it.
+    private void DetachPastedImage()
+    {
+        pasteGeneration++;
+        pastedTexture?.Dispose();
+        pastedTexture = null;
+        pastedImagePath = null;
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception)
+        {
+            AepLog.Warning(exception, $"Could not delete temp file {path}");
+        }
+    }
+
+    private void DrawPastedBar(Rect area, in ChatComposerModel model)
+    {
+        var ui = model.Ui;
+        var theme = ui.Theme;
+        var scale = UiScale.Current;
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRectFilled(area.Min, area.Max, ImGui.GetColorU32(BarFill));
+        drawList.AddLine(area.Min, new Vector2(area.Max.X, area.Min.Y), ImGui.GetColorU32(theme.Separator), 1f);
+        var inset = 10f * scale;
+        var thumbSize = 56f * scale;
+        var thumbMin = new Vector2(area.Min.X + inset, area.Center.Y - thumbSize * 0.5f);
+        var thumbMax = thumbMin + new Vector2(thumbSize, thumbSize);
+        var texture = pastedTexture;
+        if (texture is not null)
+        {
+            var size = texture.Size;
+            var aspect = size.X > 0f && size.Y > 0f ? size.X / size.Y : 1f;
+            var drawn = aspect >= 1f
+                ? new Vector2(thumbSize, thumbSize / aspect)
+                : new Vector2(thumbSize * aspect, thumbSize);
+            var imageMin = new Vector2(area.Min.X + inset + (thumbSize - drawn.X) * 0.5f,
+                area.Center.Y - drawn.Y * 0.5f);
+            drawList.AddImageRounded(texture.Handle, imageMin, imageMin + drawn, Vector2.Zero, Vector2.One,
+                0xFFFFFFFFu, 8f * scale, ImDrawFlags.RoundCornersAll);
+        }
+        else
+        {
+            Squircle.Fill(drawList, thumbMin, thumbMax, 10f * scale, ImGui.GetColorU32(FieldFill));
+            AppSkin.Icon(new Vector2(area.Min.X + inset + thumbSize * 0.5f, area.Center.Y),
+                FontAwesomeIcon.Image.ToIconString(), ui.MutedInk, 0.9f);
+        }
+
+        var textLeft = thumbMax.X + 12f * scale;
+        var closeRadius = 13f * scale;
+        var closeCenter = new Vector2(area.Max.X - 14f * scale - closeRadius, area.Center.Y);
+        var textWidth = closeCenter.X - 16f * scale - textLeft;
+        Typography.Draw(new Vector2(textLeft, area.Min.Y + 12f * scale),
+            Typography.FitText(Loc.T(L.Message.PasteImageReady), textWidth, 0.9f, FontWeight.SemiBold),
+            theme.TextStrong, 0.9f, FontWeight.SemiBold);
+        Typography.Draw(new Vector2(textLeft, area.Min.Y + 36f * scale),
+            Typography.FitText(Loc.T(L.Velvet.SendPicture), textWidth, 0.8f, FontWeight.Regular),
+            ui.MutedInk, 0.8f);
+        if (ui.IconButton(closeCenter, closeRadius, FontAwesomeIcon.Times.ToIconString(), ui.MutedInk,
+                AppSkin.Transparent, 0.9f, Loc.T(L.Common.Cancel)))
+        {
+            DiscardPastedImage();
         }
     }
 
